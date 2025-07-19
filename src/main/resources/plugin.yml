@@ -1,0 +1,14 @@
+name: stock_plugin
+version: '1.0-SNAPSHOT'
+main: lightstudio.stock_plugin.Stock_plugin
+api-version: '1.21'
+softdepend: [PlaceholderAPI]
+depends: [Vault]
+commands:
+  주식:
+    description: 주식 관련 명령어를 엽니다.
+    aliases: [stock, stocks]
+permissions:
+  stock.admin:
+    description: 주식 플러그인 관리 권한입니다.
+    default: op

@@ -1,0 +1,57 @@
+# Language Configuration
+# 이 파일은 플러그인에서 사용되는 모든 메시지를 정의합니다.
+# 원하는 대로 메시지를 사용자 정의할 수 있습니다.
+# 색상 코드를 사용하려면 '§' 기호를 사용하세요. (예: §a초록색 메시지)
+
+# 플러그인 활성화/비활성화 메시지
+plugin-enabled: "§a주식 플러그인이 활성화되었습니다."
+plugin-disabled: "§c주식 플러그인이 비활성화되었습니다."
+
+# 권한 및 명령어 관련 메시지
+permission-denied: "§c권한이 없습니다."
+player-only-command: "§c플레이어만 사용할 수 있는 명령어입니다."
+
+# 관리자 명령어 메시지
+admin-command-usage: "§c사용법: /주식 관리 <리로드|가격설정>"
+admin-reload-success: "§a설정을 리로드했습니다."
+admin-setprice-usage: "§c사용법: /주식 관리 가격설정 <주식ID> <가격>"
+admin-invalid-stock-or-price: "§c잘못된 주식 ID 또는 가격입니다."
+# %stock_name%: 주식 이름, %price%: 설정된 가격
+admin-setprice-success: "§a%stock_name%의 가격을 %price%로 설정했습니다."
+admin-unknown-command: "§c알 수 없는 관리 명령어입니다."
+
+# 주식 정보 로딩 메시지
+stock-loading-info: "§7주식 정보를 불러오는 중..."
+stock-portfolio-loading-info: "§7주식 정보를 불러오는 중..."
+stock-ranking-loading-info: "§7랭킹 정보를 불러오는 중..."
+
+# 거래 GUI 제목
+# %stock_name%: 주식 이름
+buy-gui-title: "§a%stock_name% 구매"
+sell-gui-title: "§c%stock_name% 판매"
+
+# 거래 결과 메시지
+# %cost%: 수수료 포함 총 비용
+not-enough-money: "§c돈이 부족합니다. (수수료 포함: %cost%원)"
+not-enough-stock: "§c보유 주식이 부족합니다."
+# %stock_name%: 주식 이름, %amount%: 수량
+buy-success: "§a%stock_name% %amount%주를 매수했습니다."
+sell-success: "§a%stock_name% %amount%주를 매도했습니다."
+
+# 포트폴리오 GUI 메시지
+# %total_asset%: 총 자산 평가액
+portfolio-total-asset: "§6%total_asset%원"
+# %amount%: 보유 수량
+portfolio-stock-quantity: "§f보유 수량: §6%amount%주"
+# %avg_price%: 매수 평균가
+portfolio-avg-price: "§f매수 평균가: §6%avg_price%원"
+# %current_price%: 현재가
+portfolio-current-price: "§f현재가: §6%current_price%원"
+# %color%: 손익에 따른 색상 코드, %current_value%: 평가 금액
+portfolio-current-value: "§f평가 금액: %color%%current_value%원"
+# %color%: 손익에 따른 색상 코드, %profit_loss%: 평가 손익, %profit_loss_percent%: 평가 손익률
+portfolio-profit-loss: "§f평가 손익: %color%%profit_loss%원 (%profit_loss_percent%%)"
+
+# 랭킹 GUI 메시지
+# %total_asset%: 총 자산
+ranking-total-asset: "§6%total_asset%원"
