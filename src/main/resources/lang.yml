@@ -55,3 +55,29 @@ portfolio-profit-loss: "§f평가 손익: %color%%profit_loss%원 (%profit_loss_
 # 랭킹 GUI 메시지
 # %total_asset%: 총 자산
 ranking-total-asset: "§6%total_asset%원"
+
+# GUI 뒤로가기 버튼
+gui-back-button-name: "§c뒤로가기"
+gui-back-button-lore: "§7이전 화면으로 돌아갑니다."
+
+# 주식 구독 기능 메시지
+subscribe-command-usage: "§c사용법: /주식 구독 <추가|제거|목록> [주식ID]"
+subscribe-add-usage: "§c사용법: /주식 구독 추가 <주식ID>"
+subscribe-remove-usage: "§c사용법: /주식 구독 제거 <주식ID>"
+subscribe-list-empty: "§e구독 중인 주식이 없습니다."
+subscribe-list-header: "§e--- 구독 중인 주식 ---"
+# %stock_name%: 주식 이름
+subscribe-add-success: "§a%stock_name% 주식 알림을 구독했습니다."
+subscribe-remove-success: "§a%stock_name% 주식 알림을 구독 해지했습니다."
+invalid-stock-id: "§c유효하지 않은 주식 ID입니다."
+subscribe-unknown-command: "§c알 수 없는 구독 명령어입니다."
+
+# 주가 변동 알림 메시지
+# %stock_name%: 주식 이름, %old_price%: 이전 가격, %new_price%: 새 가격, %change_percent%: 변동률
+stock-price-increase-notification: "§a[주식 알림] %stock_name%의 가격이 상승했습니다! (§f%old_price%원 -> %new_price%원, +%change_percent%%)"
+stock-price-decrease-notification: "§c[주식 알림] %stock_name%의 가격이 하락했습니다! (§f%old_price%원 -> %new_price%원, %change_percent%%)"
+
+# 거래 제한 메시지
+# %limit%: 일일 거래 한도
+transaction-limit-exceeded-buy: "§c오늘 이 주식의 구매 한도를 초과했습니다. (일일 한도: %limit%회)"
+transaction-limit-exceeded-sell: "§c오늘 이 주식의 판매 한도를 초과했습니다. (일일 한도: %limit%회)"

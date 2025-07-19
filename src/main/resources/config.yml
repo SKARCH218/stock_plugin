@@ -11,10 +11,22 @@ update-interval-seconds: 60
 # 매도 시에는 (가격 * 수량) * (1 - 수수료율) 만큼 지급됩니다.
 transaction-fee-percent: 0.5
 
+# 주식 가격 변동 알림 임계값 (단위: %)
+# 주식 가격이 이 값 이상 변동하면 구독자에게 알림이 전송됩니다.
+# 예를 들어 1.0으로 설정하면 1% 이상 가격이 변동될 때 알림이 갑니다.
+notification-threshold-percent: 1.0
+
+# 하루 1인당 주식 거래 제한 기능
+stock-transaction-limits:
+  enable: true # 사용 여부
+  # 0으로 설정시 무한
+  buy: 10 # 하루에 10번 구매가능
+  sell: 10 # 하루에 10번 판매가능
+
 # GUI 설정
 gui:
   # 메인 주식 시장 GUI의 제목입니다.
-  main-title: "§l주식 시장"
+  main-title: "§l주식   시장"
   # 내 주식 현황 GUI의 제목입니다.
   portfolio-title: "§l내 주식 현황"
   # 투자 순위표 GUI의 제목입니다.
