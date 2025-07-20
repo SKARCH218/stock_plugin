@@ -43,7 +43,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     private lateinit var mainGuiTitle: String
     private lateinit var portfolioGuiTitle: String
     private lateinit var rankingGuiTitle: String
-    private val guiButtonConfigs = mutableMapOf<String, ButtonConfig>()
+    private lateinit var subscribeGuiTitle: String
     private val messages = mutableMapOf<String, String>()
     private val playerGuiContext = mutableMapOf<UUID, Stack<() -> Unit>>()
 
@@ -93,22 +93,13 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         mainGuiTitle = config.getString("gui.main-title", "§l주식 시장")!!
         portfolioGuiTitle = config.getString("gui.portfolio-title", "§l내 주식 현황")!!
         rankingGuiTitle = config.getString("gui.ranking-title", "§l투자 순위표")!!
+        subscribeGuiTitle = config.getString("gui.subscribe-title", "§l주식 구독")!!
         itemsAllStructureVoid = config.getBoolean("gui.items-all-structure-void", false)
 
         enableTransactionLimits = config.getBoolean("stock-transaction-limits.enable", false)
         dailyBuyLimit = config.getInt("stock-transaction-limits.buy", 0)
         dailySellLimit = config.getInt("stock-transaction-limits.sell", 0)
 
-        guiButtonConfigs.clear()
-        config.getConfigurationSection("gui.buttons")?.getKeys(false)?.forEach { key ->
-            val section = config.getConfigurationSection("gui.buttons.$key")!!
-            guiButtonConfigs[key] = ButtonConfig(
-                material = Material.valueOf(section.getString("material", "STONE")!!),
-                customModelData = section.getInt("custom-model-data", 0),
-                name = section.getString("name", "")!!,
-                lore = section.getStringList("lore")
-            )
-        }
         loadMessages()
     }
 
@@ -154,11 +145,15 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
                         total_spent REAL NOT NULL DEFAULT 0,
                         PRIMARY KEY (uuid, stock_id)
                     );
+                """.trimIndent())
+                stmt.execute("""
                     CREATE TABLE IF NOT EXISTS player_subscriptions (
                         uuid TEXT NOT NULL,
                         stock_id TEXT NOT NULL,
                         PRIMARY KEY (uuid, stock_id)
                     );
+                """.trimIndent())
+                stmt.execute("""
                     CREATE TABLE IF NOT EXISTS player_daily_transactions (
                         uuid TEXT NOT NULL,
                         stock_id TEXT NOT NULL,
@@ -234,9 +229,6 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
                 }
                 handleAdminCommand(sender, args.drop(1))
             }
-            args.isNotEmpty() && args[0].equals("구독", ignoreCase = true) -> {
-                handleSubscriptionCommand(sender, args.drop(1))
-            }
             else -> {
                 openMainGui(sender)
             }
@@ -274,53 +266,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         }
     }
 
-    private fun handleSubscriptionCommand(sender: Player, args: List<String>) {
-        if (args.isEmpty()) {
-            sender.sendMessage(messages["subscribe-command-usage"] ?: "§c사용법: /주식 구독 <추가|제거|목록> [주식ID]")
-            return
-        }
-        when (args[0].lowercase()) {
-            "추가" -> {
-                if (args.size < 2) {
-                    sender.sendMessage(messages["subscribe-add-usage"] ?: "§c사용법: /주식 구독 추가 <주식ID>")
-                    return
-                }
-                val stockId = args[1]
-                if (stocks[stockId] == null) {
-                    sender.sendMessage(messages["invalid-stock-id"] ?: "§c유효하지 않은 주식 ID입니다.")
-                    return
-                }
-                addSubscription(sender.uniqueId.toString(), stockId)
-                sender.sendMessage(messages["subscribe-add-success"]?.replace("%stock_name%", stocks[stockId]?.name ?: "") ?: "§a${stocks[stockId]?.name} 주식 알림을 구독했습니다.")
-            }
-            "제거" -> {
-                if (args.size < 2) {
-                    sender.sendMessage(messages["subscribe-remove-usage"] ?: "§c사용법: /주식 구독 제거 <주식ID>")
-                    return
-                }
-                val stockId = args[1]
-                if (stocks[stockId] == null) {
-                    sender.sendMessage(messages["invalid-stock-id"] ?: "§c유효하지 않은 주식 ID입니다.")
-                    return
-                }
-                removeSubscription(sender.uniqueId.toString(), stockId)
-                sender.sendMessage(messages["subscribe-remove-success"]?.replace("%stock_name%", stocks[stockId]?.name ?: "") ?: "§a${stocks[stockId]?.name} 주식 알림을 구독 해지했습니다.")
-            }
-            "목록" -> {
-                val subscriptions = getSubscriptions(sender.uniqueId.toString())
-                if (subscriptions.isEmpty()) {
-                    sender.sendMessage(messages["subscribe-list-empty"] ?: "§e구독 중인 주식이 없습니다.")
-                } else {
-                    val stockNames = subscriptions.mapNotNull { stocks[it]?.name }
-                    sender.sendMessage(messages["subscribe-list-header"] ?: "§e--- 구독 중인 주식 ---")
-                    stockNames.forEach { name ->
-                        sender.sendMessage("§f- $name")
-                    }
-                }
-            }
-            else -> sender.sendMessage(messages["subscribe-unknown-command"] ?: "§c알 수 없는 구독 명령어입니다.")
-        }
-    }
+    
 
     private fun openMainGui(player: Player) {
         playerGuiContext[player.uniqueId]?.clear() // Clear context when opening main GUI
@@ -328,8 +274,9 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         stocks.values.forEachIndexed { i, stock ->
             if (i < 45) inv.setItem(i, createStockItem(stock))
         }
-        inv.setItem(48, createGuiItem(guiButtonConfigs["portfolio"]!!.material, guiButtonConfigs["portfolio"]!!.name, guiButtonConfigs["portfolio"]!!.lore, "portfolio"))
-        inv.setItem(50, createGuiItem(guiButtonConfigs["ranking"]!!.material, guiButtonConfigs["ranking"]!!.name, guiButtonConfigs["ranking"]!!.lore, "ranking"))
+        inv.setItem(48, createGuiItem(Material.PLAYER_HEAD, messages["portfolio-button-name"] ?: "§a내 주식 현황", listOf(messages["portfolio-button-lore"] ?: "§7클릭하여 내 주식 정보를 봅니다.")))
+        inv.setItem(49, createGuiItem(Material.BOOK, messages["subscribe-button-name"] ?: "§d주식 구독", listOf(messages["subscribe-button-lore"] ?: "§7클릭하여 주식 알림을 구독/해지합니다.")))
+        inv.setItem(50, createGuiItem(Material.EMERALD, messages["ranking-button-name"] ?: "§b투자 순위표", listOf(messages["ranking-button-lore"] ?: "§7클릭하여 투자 순위를 봅니다.")))
         player.openInventory(inv)
     }
 
@@ -339,25 +286,37 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         val viewTitle = event.view.title
         val clickedItem = event.currentItem ?: return
 
-        event.isCancelled = true
+        val isPluginGui = when (viewTitle) {
+            mainGuiTitle, portfolioGuiTitle, rankingGuiTitle, subscribeGuiTitle -> true
+            else -> viewTitle.contains("구매") || viewTitle.contains("판매")
+        }
+
+        if (isPluginGui) {
+            event.isCancelled = true
+        }
 
         val backButtonName = messages["gui-back-button-name"] ?: "§c뒤로가기"
         if (clickedItem.itemMeta?.displayName == backButtonName) {
-            val playerStack = playerGuiContext[player.uniqueId]
-            if (playerStack != null && playerStack.isNotEmpty()) {
-                playerStack.pop().invoke() // Go back to the previous GUI
-            } else {
-                player.closeInventory() // Close if no previous GUI
+            if (isPluginGui) { // Only handle back button for plugin GUIs
+                val playerStack = playerGuiContext[player.uniqueId]
+                if (playerStack != null && playerStack.isNotEmpty()) {
+                    playerStack.pop().invoke() // Go back to the previous GUI
+                } else {
+                    player.closeInventory() // Close if no previous GUI
+                }
             }
             return
         }
+
+        if (!isPluginGui) return // Only process plugin GUI clicks further
 
         when (viewTitle) {
             mainGuiTitle -> {
                 val clickedItemName = clickedItem.itemMeta?.displayName
                 when (clickedItemName) {
-                    guiButtonConfigs["portfolio"]?.name -> openPortfolioGui(player) { openMainGui(player) }
-                    guiButtonConfigs["ranking"]?.name -> openRankingGui(player) { openMainGui(player) }
+                    messages["portfolio-button-name"] -> openPortfolioGui(player) { openMainGui(player) }
+                    messages["ranking-button-name"] -> openRankingGui(player) { openMainGui(player) }
+                    messages["subscribe-button-name"] -> openSubscribeGui(player) { openMainGui(player) }
                     else -> {
                         val stock = getStockFromItem(clickedItem) ?: return
                         when (event.click) {
@@ -371,6 +330,22 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             portfolioGuiTitle, rankingGuiTitle -> {
                 // No specific actions for items within these GUIs yet, but back button is handled.
             }
+            subscribeGuiTitle -> {
+                val stock = getStockFromItem(clickedItem)
+                if (stock == null) {
+                    return
+                }
+                val playerUuid = player.uniqueId.toString()
+                val isSubscribed = getSubscriptions(playerUuid).contains(stock.id)
+                if (isSubscribed) {
+                    removeSubscription(playerUuid, stock.id)
+                    player.sendMessage(messages["subscribe-removed"]?.replace("%stock_name%", stock.name) ?: "§a${stock.name} 주식 구독을 해지했습니다.")
+                } else {
+                    addSubscription(playerUuid, stock.id)
+                    player.sendMessage(messages["subscribe-added"]?.replace("%stock_name%", stock.name) ?: "§a${stock.name} 주식을 구독했습니다.")
+                }
+                openSubscribeGui(player) { openMainGui(player) } // Refresh GUI
+            }
             else -> {
                 if (viewTitle.contains("구매") || viewTitle.contains("판매")) {
                     handleTrade(player, clickedItem, viewTitle)
@@ -380,25 +355,48 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     }
 
     private fun handleTrade(player: Player, item: ItemStack, viewTitle: String) {
-        val amount = item.itemMeta?.displayName?.filter { it.isDigit() }?.toIntOrNull() ?: return
         val stockName = viewTitle.substring(2).substringBefore(" ")
         val stock = stocks.values.find { it.name == stockName } ?: return
         val isBuy = viewTitle.contains("구매")
 
-        if (enableTransactionLimits) {
-            val playerUuid = player.uniqueId.toString()
-            val dailyTransaction = getPlayerDailyTransaction(playerUuid, stock.id)
-            val today = java.time.LocalDate.now().toString()
+        val amount: Int = when (item.itemMeta?.displayName) {
+            messages["buy-all-in-button-name"] -> {
+                val maxBuyable = (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt()
+                if (maxBuyable <= 0) {
+                    player.sendMessage(messages["not-enough-money"] ?: "§c돈이 부족합니다.")
+                    player.closeInventory()
+                    return
+                }
+                maxBuyable
+            }
+            messages["sell-all-button-name"] -> {
+                val playerStock = getPlayerStock(player.uniqueId.toString(), stock.id)
+                val currentAmount = playerStock?.amount ?: 0
+                if (currentAmount <= 0) {
+                    player.sendMessage(messages["not-enough-stock"] ?: "§c보유 주식이 부족합니다.")
+                    player.closeInventory()
+                    return
+                }
+                currentAmount
+            }
+            else -> item.itemMeta?.displayName?.filter { it.isDigit() }?.toIntOrNull() ?: return
+        }
 
+        val playerUuid = player.uniqueId.toString()
+        val dailyTransaction = getPlayerDailyTransaction(playerUuid, "GLOBAL_TRADE")
+        val today = java.time.LocalDate.now().toString()
+
+        var currentBuyCount = if (dailyTransaction?.lastUpdatedDate == today) dailyTransaction.buyCount else 0
+        var currentSellCount = if (dailyTransaction?.lastUpdatedDate == today) dailyTransaction.sellCount else 0
+
+        if (enableTransactionLimits) {
             if (isBuy) {
-                val currentBuyCount = if (dailyTransaction?.lastUpdatedDate == today) dailyTransaction.buyCount else 0
                 if (dailyBuyLimit > 0 && currentBuyCount >= dailyBuyLimit) {
                     player.sendMessage(messages["transaction-limit-exceeded-buy"]?.replace("%limit%", dailyBuyLimit.toString()) ?: "§c오늘 이 주식의 구매 한도를 초과했습니다. (일일 한도: ${dailyBuyLimit}회)")
                     player.closeInventory()
                     return
                 }
             } else {
-                val currentSellCount = if (dailyTransaction?.lastUpdatedDate == today) dailyTransaction.sellCount else 0
                 if (dailySellLimit > 0 && currentSellCount >= dailySellLimit) {
                     player.sendMessage(messages["transaction-limit-exceeded-sell"]?.replace("%limit%", dailySellLimit.toString()) ?: "§c오늘 이 주식의 판매 한도를 초과했습니다. (일일 한도: ${dailySellLimit}회)")
                     player.closeInventory()
@@ -419,7 +417,9 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             econ!!.withdrawPlayer(player, cost)
             updatePlayerStock(player.uniqueId.toString(), stock.id, amount, totalPrice)
             updatePlayerDailyTransaction(player.uniqueId.toString(), stock.id, true)
-            player.sendMessage(messages["buy-success"]?.replace("%stock_name%", stock.name)?.replace("%amount%", amount.toString()) ?: "§a${stock.name} ${amount}주를 매수했습니다.")
+            val remainingBuys = if (dailyBuyLimit > 0) dailyBuyLimit - (currentBuyCount + 1) else -1 // -1 for unlimited
+            val finalBuyMessage = messages["buy-success"]?.replace("%stock_name%", stock.name)?.replace("%amount%", amount.toString())?.replace("%remaining_transactions%", remainingBuys.toString()) ?: "§a${stock.name} ${amount}주를 매수했습니다. (남은 구매 횟수: ${if (remainingBuys == -1) "무제한" else remainingBuys}회)"
+            player.sendMessage(finalBuyMessage)
         } else {
             val currentAmount = getPlayerStock(player.uniqueId.toString(), stock.id)?.amount ?: 0
             if (currentAmount < amount) {
@@ -432,7 +432,9 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             val spentToRemove = avgPrice * amount
             updatePlayerStock(player.uniqueId.toString(), stock.id, -amount, -spentToRemove)
             updatePlayerDailyTransaction(player.uniqueId.toString(), stock.id, false)
-            player.sendMessage(messages["sell-success"]?.replace("%stock_name%", stock.name)?.replace("%amount%", amount.toString()) ?: "§a${stock.name} ${amount}주를 매도했습니다.")
+            val remainingSells = if (dailySellLimit > 0) dailySellLimit - (currentSellCount + 1) else -1 // -1 for unlimited
+            val finalSellMessage = messages["sell-success"]?.replace("%stock_name%", stock.name)?.replace("%amount%", amount.toString())?.replace("%remaining_transactions%", remainingSells.toString()) ?: "§a${stock.name} ${amount}주를 매도했습니다. (남은 판매 횟수: ${if (remainingSells == -1) "무제한" else remainingSells}회)"
+            player.sendMessage(finalSellMessage)
         }
         player.closeInventory()
     }
@@ -441,9 +443,21 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         playerGuiContext.getOrPut(player.uniqueId) { Stack() }.push(parentGui)
         val title = if (type == "buy") messages["buy-gui-title"]?.replace("%stock_name%", stock.name) ?: "§a${stock.name} 구매" else messages["sell-gui-title"]?.replace("%stock_name%", stock.name) ?: "§c${stock.name} 판매"
         val inv = Bukkit.createInventory(null, 27, title)
-        listOf(1, 5, 10, 50, 100, 500).forEachIndexed { i, amount ->
-            inv.setItem(i, createGuiItem(Material.GREEN_STAINED_GLASS_PANE, "§e${amount}주", emptyList()))
+        val amounts = listOf(1, 5, 10, 50, 100, 500)
+        val startSlot = (27 - amounts.size) / 2 // Center the buttons in the middle row, shifted one to the right
+        amounts.forEachIndexed { i, amount ->
+            inv.setItem(startSlot + i, createGuiItem(Material.GREEN_STAINED_GLASS_PANE, "§e${amount}주", listOf("§7클릭하여 ${amount}주 거래")))
         }
+
+        if (type == "buy") {
+            val maxBuyable = (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt()
+            inv.setItem(16, createGuiItem(Material.GOLD_INGOT, messages["buy-all-in-button-name"] ?: "§e올인", listOf(messages["buy-all-in-button-lore"]?.replace("%amount%", maxBuyable.toString()) ?: "§7최대 ${maxBuyable}주 구매")))
+        } else {
+            val playerStock = getPlayerStock(player.uniqueId.toString(), stock.id)
+            val currentAmount = playerStock?.amount ?: 0
+            inv.setItem(16, createGuiItem(Material.REDSTONE, messages["sell-all-button-name"] ?: "§c전부 팔기", listOf(messages["sell-all-button-lore"]?.replace("%amount%", currentAmount.toString()) ?: "§7보유 주식 ${currentAmount}주 전부 판매")))
+        }
+
         val backButtonSlot = getBackButtonSlot(inv.size)
         if (backButtonSlot != -1) {
             inv.setItem(backButtonSlot, createGuiItem(Material.BARRIER, "", emptyList(), isBackButton = true))
@@ -513,6 +527,32 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         })
     }
 
+    private fun openSubscribeGui(player: Player, parentGui: () -> Unit) {
+        playerGuiContext.getOrPut(player.uniqueId) { Stack() }.push(parentGui)
+        val inv = Bukkit.createInventory(null, 54, subscribeGuiTitle)
+        val playerSubscriptions = getSubscriptions(player.uniqueId.toString())
+
+        stocks.values.forEachIndexed { i, stock ->
+            if (i < 45) {
+                val isSubscribed = playerSubscriptions.contains(stock.id)
+                val material = if (isSubscribed) Material.LIME_WOOL else Material.RED_WOOL
+                val status = if (isSubscribed) messages["subscribe-status-subscribed"] ?: "§a구독 중" else messages["subscribe-status-not-subscribed"] ?: "§c구독 안 함"
+                val lore = listOf(
+                    messages["subscribe-item-lore-status"]?.replace("%status%", status) ?: "§7상태: %status%",
+                    "",
+                    if (isSubscribed) messages["subscribe-item-lore-click-unsubscribe"] ?: "§c클릭하여 구독 해지" else messages["subscribe-item-lore-click-subscribe"] ?: "§a클릭하여 구독"
+                )
+                inv.setItem(i, createGuiItem(material, "§e${stock.name} §7(${stock.id})", lore))
+            }
+        }
+
+        val backButtonSlot = getBackButtonSlot(inv.size)
+        if (backButtonSlot != -1) {
+            inv.setItem(backButtonSlot, createGuiItem(Material.BARRIER, "", emptyList(), isBackButton = true))
+        }
+        player.openInventory(inv)
+    }
+
     // --- Helper and Data Access Functions ---
 
     private fun createStockItem(stock: Stock): ItemStack {
@@ -531,7 +571,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         return item
     }
 
-    private fun createGuiItem(mat: Material, name: String, lore: List<String>, buttonKey: String? = null, isBackButton: Boolean = false): ItemStack {
+    private fun createGuiItem(mat: Material, name: String, lore: List<String>, isBackButton: Boolean = false): ItemStack {
         val finalMaterial = if (itemsAllStructureVoid) Material.STRUCTURE_VOID else mat
         val item = ItemStack(finalMaterial)
         val meta = item.itemMeta
@@ -543,11 +583,8 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             return item
         }
 
-        val config = buttonKey?.let { guiButtonConfigs[it] }
-
-        meta.setDisplayName(config?.name ?: name)
-        meta.lore = config?.lore ?: lore
-        config?.customModelData?.let { meta.setCustomModelData(it) }
+        meta.setDisplayName(name)
+        meta.lore = lore
 
         item.itemMeta = meta
         return item
@@ -564,7 +601,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     }
 
     private fun getStockFromItem(item: ItemStack): Stock? {
-        if (item.type != Material.PAPER || !item.hasItemMeta()) return null
+        if ((item.type != Material.PAPER && item.type != Material.LIME_WOOL && item.type != Material.RED_WOOL) || !item.hasItemMeta()) return null
         val stockId = item.itemMeta.displayName.substringAfter('(')?.substringBefore(')') ?: return null
         return stocks[stockId]
     }
@@ -701,7 +738,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         try {
             db.prepareStatement(sql).use { pstmt ->
                 pstmt.setString(1, uuid)
-                pstmt.setString(2, stockId)
+                pstmt.setString(2, "GLOBAL_TRADE")
                 val rs = pstmt.executeQuery()
                 if (rs.next()) {
                     return PlayerDailyTransaction(
@@ -721,7 +758,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
 
     private fun updatePlayerDailyTransaction(uuid: String, stockId: String, isBuy: Boolean) {
         val today = java.time.LocalDate.now().toString()
-        val currentTransaction = getPlayerDailyTransaction(uuid, stockId)
+        val currentTransaction = getPlayerDailyTransaction(uuid, "GLOBAL_TRADE")
 
         if (currentTransaction == null || currentTransaction.lastUpdatedDate != today) {
             // New entry or new day, reset counts
@@ -729,7 +766,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             try {
                 db.prepareStatement(sql).use { pstmt ->
                     pstmt.setString(1, uuid)
-                    pstmt.setString(2, stockId)
+                    pstmt.setString(2, "GLOBAL_TRADE")
                     pstmt.setInt(3, if (isBuy) 1 else 0)
                     pstmt.setInt(4, if (!isBuy) 1 else 0)
                     pstmt.setString(5, today)
@@ -748,7 +785,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             try {
                 db.prepareStatement(sql).use { pstmt ->
                     pstmt.setString(1, uuid)
-                    pstmt.setString(2, stockId)
+                    pstmt.setString(2, "GLOBAL_TRADE")
                     pstmt.executeUpdate()
                 }
             } catch (e: SQLException) {
@@ -807,24 +844,16 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): MutableList<String>? {
         if (command.name.equals("주식", ignoreCase = true)) {
             if (args.size == 1) {
-                return mutableListOf("관리", "구독").filter { it.startsWith(args[0], true) }.toMutableList()
+                return mutableListOf("관리").filter { it.startsWith(args[0], true) }.toMutableList()
             } else if (args.size == 2) {
                 when (args[0].lowercase()) {
                     "관리" -> return mutableListOf("리로드", "가격설정").filter { it.startsWith(args[1], true) }.toMutableList()
-                    "구독" -> return mutableListOf("추가", "제거", "목록").filter { it.startsWith(args[1], true) }.toMutableList()
                 }
             } else if (args.size == 3) {
                 when (args[0].lowercase()) {
                     "관리" -> {
                         if (args[1].lowercase() == "가격설정") {
                             return stocks.keys.filter { it.startsWith(args[2], true) }.toMutableList()
-                        }
-                    }
-                    "구독" -> {
-                        if (args[1].lowercase() == "추가") {
-                            return stocks.keys.filter { it.startsWith(args[2], true) }.toMutableList()
-                        } else if (args[1].lowercase() == "제거" && sender is Player) {
-                            return getSubscriptions(sender.uniqueId.toString()).filter { it.startsWith(args[2], true) }.toMutableList()
                         }
                     }
                 }

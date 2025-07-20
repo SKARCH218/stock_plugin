@@ -26,7 +26,7 @@ stock-transaction-limits:
 # GUI 설정
 gui:
   # 메인 주식 시장 GUI의 제목입니다.
-  main-title: "§l주식   시장"
+  main-title: "§l주식 시장"
   # 내 주식 현황 GUI의 제목입니다.
   portfolio-title: "§l내 주식 현황"
   # 투자 순위표 GUI의 제목입니다.
