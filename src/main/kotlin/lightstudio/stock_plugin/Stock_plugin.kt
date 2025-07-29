@@ -274,9 +274,9 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         stocks.values.forEachIndexed { i, stock ->
             if (i < 45) inv.setItem(i, createStockItem(stock))
         }
-        inv.setItem(48, createGuiItem(Material.PLAYER_HEAD, messages["portfolio-button-name"] ?: "§a내 주식 현황", listOf(messages["portfolio-button-lore"] ?: "§7클릭하여 내 주식 정보를 봅니다.")))
-        inv.setItem(49, createGuiItem(Material.BOOK, messages["subscribe-button-name"] ?: "§d주식 구독", listOf(messages["subscribe-button-lore"] ?: "§7클릭하여 주식 알림을 구독/해지합니다.")))
-        inv.setItem(50, createGuiItem(Material.EMERALD, messages["ranking-button-name"] ?: "§b투자 순위표", listOf(messages["ranking-button-lore"] ?: "§7클릭하여 투자 순위를 봅니다.")))
+        inv.setItem(48, createGuiItem(Material.PLAYER_HEAD, messages["portfolio-button-name"] ?: "§a내 주식 현황", listOf(messages["portfolio-button-lore"] ?: "§7클릭하여 내 주식 정보를 봅니다."), isButton = true))
+        inv.setItem(49, createGuiItem(Material.BOOK, messages["subscribe-button-name"] ?: "§d주식 구독", listOf(messages["subscribe-button-lore"] ?: "§7클릭하여 주식 알림을 구독/해지합니다."), isButton = true))
+        inv.setItem(50, createGuiItem(Material.EMERALD, messages["ranking-button-name"] ?: "§b투자 순위표", listOf(messages["ranking-button-lore"] ?: "§7클릭하여 투자 순위를 봅니다."), isButton = true))
         player.openInventory(inv)
     }
 
@@ -446,16 +446,16 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         val amounts = listOf(1, 5, 10, 50, 100, 500)
         val startSlot = (27 - amounts.size) / 2 // Center the buttons in the middle row, shifted one to the right
         amounts.forEachIndexed { i, amount ->
-            inv.setItem(startSlot + i, createGuiItem(Material.GREEN_STAINED_GLASS_PANE, "§e${amount}주", listOf("§7클릭하여 ${amount}주 거래")))
+            inv.setItem(startSlot + i, createGuiItem(Material.GREEN_STAINED_GLASS_PANE, "§e${amount}주", listOf("§7클릭하여 ${amount}주 거래"), isButton = true))
         }
 
         if (type == "buy") {
             val maxBuyable = (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt()
-            inv.setItem(16, createGuiItem(Material.GOLD_INGOT, messages["buy-all-in-button-name"] ?: "§e올인", listOf(messages["buy-all-in-button-lore"]?.replace("%amount%", maxBuyable.toString()) ?: "§7최대 ${maxBuyable}주 구매")))
+            inv.setItem(16, createGuiItem(Material.GOLD_INGOT, messages["buy-all-in-button-name"] ?: "§e올인", listOf(messages["buy-all-in-button-lore"]?.replace("%amount%", maxBuyable.toString()) ?: "§7최대 ${maxBuyable}주 구매"), isButton = true))
         } else {
             val playerStock = getPlayerStock(player.uniqueId.toString(), stock.id)
             val currentAmount = playerStock?.amount ?: 0
-            inv.setItem(16, createGuiItem(Material.REDSTONE, messages["sell-all-button-name"] ?: "§c전부 팔기", listOf(messages["sell-all-button-lore"]?.replace("%amount%", currentAmount.toString()) ?: "§7보유 주식 ${currentAmount}주 전부 판매")))
+            inv.setItem(16, createGuiItem(Material.REDSTONE, messages["sell-all-button-name"] ?: "§c전부 팔기", listOf(messages["sell-all-button-lore"]?.replace("%amount%", currentAmount.toString()) ?: "§7보유 주식 ${currentAmount}주 전부 판매"), isButton = true))
         }
 
         val backButtonSlot = getBackButtonSlot(inv.size)
@@ -490,7 +490,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
 
             Bukkit.getScheduler().runTask(this, Runnable {
                 items.forEachIndexed { i, item -> if (i < 45) inv.setItem(i, item) }
-                inv.setItem(49, createGuiItem(Material.GOLD_INGOT, messages["portfolio-total-asset"]?.replace("%total_asset%", String.format("%,.2f", totalAsset)) ?: "§e총 자산 평가액", listOf(messages["portfolio-total-asset"]?.replace("%total_asset%", String.format("%,.2f", totalAsset)) ?: "§6${String.format("%,.2f", totalAsset)}원")))
+                inv.setItem(49, createGuiItem(Material.GOLD_INGOT, messages["portfolio-total-asset"]?.replace("%total_asset%", String.format("%,.2f", totalAsset)) ?: "§e총 자산 평가액", listOf(messages["portfolio-total-asset"]?.replace("%total_asset%", String.format("%,.2f", totalAsset)) ?: "§6${String.format("%,.2f", totalAsset)}원"), isButton = true))
                 val backButtonSlot = getBackButtonSlot(inv.size)
                 if (backButtonSlot != -1) {
                     inv.setItem(backButtonSlot, createGuiItem(Material.BARRIER, "", emptyList(), isBackButton = true))
@@ -571,8 +571,8 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         return item
     }
 
-    private fun createGuiItem(mat: Material, name: String, lore: List<String>, isBackButton: Boolean = false): ItemStack {
-        val finalMaterial = if (itemsAllStructureVoid) Material.STRUCTURE_VOID else mat
+    private fun createGuiItem(mat: Material, name: String, lore: List<String>, isButton: Boolean = false, isBackButton: Boolean = false): ItemStack {
+        val finalMaterial = if (itemsAllStructureVoid && (isButton || isBackButton)) Material.STRUCTURE_VOID else mat
         val item = ItemStack(finalMaterial)
         val meta = item.itemMeta
 
