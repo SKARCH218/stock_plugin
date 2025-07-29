@@ -1,0 +1,9 @@
+feat: Implement and refine stock plugin features
+
+This commit addresses several key functionalities and bug fixes:
+- Implemented GUI-based stock subscription with toggleable wool blocks.
+- Changed daily transaction limits to apply globally per player, not per stock.
+- Added remaining transaction count display in trade messages.
+- Fixed issues with "All-in" and "Sell-all" buttons in trade GUIs.
+- Resolved inventory item cancellation issues for non-plugin GUIs.
+- Removed debug logs for cleaner console output.
