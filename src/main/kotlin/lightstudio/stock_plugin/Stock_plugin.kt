@@ -44,6 +44,20 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     private lateinit var portfolioGuiTitle: String
     private lateinit var rankingGuiTitle: String
     private lateinit var subscribeGuiTitle: String
+    private lateinit var buyGuiTitleFormat: String
+    private lateinit var sellGuiTitleFormat: String
+
+    // Button Configurations
+    private lateinit var portfolioButton: ButtonConfig
+    private lateinit var subscribeButton: ButtonConfig
+    private lateinit var rankingButton: ButtonConfig
+    private lateinit var subscribeToggleOnButton: ButtonConfig
+    private lateinit var subscribeToggleOffButton: ButtonConfig
+    private lateinit var portfolioTotalAssetButton: ButtonConfig
+    private lateinit var backButton: ButtonConfig
+    private var tradeButtons = listOf<TradeButtonConfig>()
+    private lateinit var buyAllButton: ButtonConfig
+    private lateinit var sellAllButton: ButtonConfig
     private val messages = mutableMapOf<String, String>()
     private val playerGuiContext = mutableMapOf<UUID, Stack<() -> Unit>>()
 
@@ -94,7 +108,43 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         portfolioGuiTitle = config.getString("gui.portfolio-title", "§l내 주식 현황")!!
         rankingGuiTitle = config.getString("gui.ranking-title", "§l투자 순위표")!!
         subscribeGuiTitle = config.getString("gui.subscribe-title", "§l주식 구독")!!
+        buyGuiTitleFormat = config.getString("gui.buy-title-format", "§a%stock_name% 구매")!!
+        sellGuiTitleFormat = config.getString("gui.sell-title-format", "§c%stock_name% 판매")!!
         itemsAllStructureVoid = config.getBoolean("gui.items-all-structure-void", false)
+
+        fun loadButtonConfig(path: String, default: ButtonConfig): ButtonConfig {
+            val section = config.getConfigurationSection(path)
+            return if (section == null) default else ButtonConfig(
+                material = Material.getMaterial(section.getString("material", default.material.name)!!.uppercase()) ?: default.material,
+                customModelData = section.getInt("custom-model-data", default.customModelData),
+                name = section.getString("name", default.name)!!,
+                lore = section.getStringList("lore").ifEmpty { default.lore }
+            )
+        }
+
+        portfolioButton = loadButtonConfig("buttons.portfolio", ButtonConfig(Material.PLAYER_HEAD, 0, "§a내 주식 현황", listOf("§7클릭하여 내 주식 정보를 봅니다.")))
+        subscribeButton = loadButtonConfig("buttons.subscribe", ButtonConfig(Material.BOOK, 0, "§d주식 구독", listOf("§7클릭하여 주식 알림을 구독/해지합니다.")))
+        rankingButton = loadButtonConfig("buttons.ranking", ButtonConfig(Material.EMERALD, 0, "§b투자 순위표", listOf("§7클릭하여 투자 순위를 봅니다.")))
+
+        subscribeToggleOnButton = loadButtonConfig("buttons.subscribe-toggle-on", ButtonConfig(Material.LIME_WOOL, 0, "§e%stock_name% §7(구독 중)", listOf("§7상태: §a구독 중", "", "§c클릭하여 구독 해지")))
+        subscribeToggleOffButton = loadButtonConfig("buttons.subscribe-toggle-off", ButtonConfig(Material.RED_WOOL, 0, "§e%stock_name% §7(미구독)", listOf("§7상태: §c구독 안 함", "", "§a클릭하여 구독")))
+        portfolioTotalAssetButton = loadButtonConfig("buttons.portfolio-total-asset", ButtonConfig(Material.GOLD_INGOT, 0, "§e총 자산 평가액", listOf("§6%total_asset%원")))
+        backButton = loadButtonConfig("buttons.back", ButtonConfig(Material.BARRIER, 0, "§c뒤로가기", listOf("§7이전 화면으로 돌아갑니다.")))
+
+        tradeButtons = config.getMapList("trade-gui.buttons").map { map ->
+            TradeButtonConfig(
+                amount = (map["amount"] as? Int) ?: 1,
+                button = ButtonConfig(
+                    material = Material.getMaterial((map["material"] as? String)?.uppercase() ?: "STONE") ?: Material.STONE,
+                    customModelData = (map["custom-model-data"] as? Int) ?: 0,
+                    name = (map["name"] as? String) ?: "%amount%주",
+                    lore = (map["lore"] as? List<String>) ?: emptyList()
+                )
+            )
+        }
+
+        buyAllButton = loadButtonConfig("trade-gui.buy-all-button", ButtonConfig(Material.GOLD_INGOT, 0, "§6올인", listOf("§7최대 §e%amount%§7주 구매 가능")))
+        sellAllButton = loadButtonConfig("trade-gui.sell-all-button", ButtonConfig(Material.REDSTONE, 0, "§c전부 판매", listOf("§7보유 주식 §e%amount%§7주")))
 
         enableTransactionLimits = config.getBoolean("stock-transaction-limits.enable", false)
         dailyBuyLimit = config.getInt("stock-transaction-limits.buy", 0)
@@ -125,7 +175,9 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
                 id = key,
                 name = section.getString("name", key)!!,
                 price = section.getDouble("initial-price", 1000.0),
-                fluctuation = section.getDouble("fluctuation", 100.0)
+                fluctuation = section.getDouble("fluctuation", 100.0),
+                material = Material.getMaterial(section.getString("material", "PAPER")!!.uppercase()) ?: Material.PAPER,
+                customModelData = section.getInt("custom-model-data", 0)
             )
             stockTrends[key] = Trend.STABLE
         }
@@ -274,9 +326,9 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         stocks.values.forEachIndexed { i, stock ->
             if (i < 45) inv.setItem(i, createStockItem(stock))
         }
-        inv.setItem(48, createGuiItem(Material.PLAYER_HEAD, messages["portfolio-button-name"] ?: "§a내 주식 현황", listOf(messages["portfolio-button-lore"] ?: "§7클릭하여 내 주식 정보를 봅니다."), isButton = true))
-        inv.setItem(49, createGuiItem(Material.BOOK, messages["subscribe-button-name"] ?: "§d주식 구독", listOf(messages["subscribe-button-lore"] ?: "§7클릭하여 주식 알림을 구독/해지합니다."), isButton = true))
-        inv.setItem(50, createGuiItem(Material.EMERALD, messages["ranking-button-name"] ?: "§b투자 순위표", listOf(messages["ranking-button-lore"] ?: "§7클릭하여 투자 순위를 봅니다."), isButton = true))
+        inv.setItem(48, createGuiItem(portfolioButton))
+        inv.setItem(49, createGuiItem(subscribeButton))
+        inv.setItem(50, createGuiItem(rankingButton))
         player.openInventory(inv)
     }
 
@@ -286,17 +338,24 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         val viewTitle = event.view.title
         val clickedItem = event.currentItem ?: return
 
-        val isPluginGui = when (viewTitle) {
-            mainGuiTitle, portfolioGuiTitle, rankingGuiTitle, subscribeGuiTitle -> true
-            else -> viewTitle.contains("구매") || viewTitle.contains("판매")
+        val buyTitlePrefix = buyGuiTitleFormat.substringBefore("%stock_name%")
+        val sellTitlePrefix = sellGuiTitleFormat.substringBefore("%stock_name%")
+
+        val isPluginGui = when {
+            viewTitle == mainGuiTitle -> true
+            viewTitle == portfolioGuiTitle -> true
+            viewTitle == rankingGuiTitle -> true
+            viewTitle == subscribeGuiTitle -> true
+            viewTitle.startsWith(buyTitlePrefix) -> true
+            viewTitle.startsWith(sellTitlePrefix) -> true
+            else -> false
         }
 
         if (isPluginGui) {
             event.isCancelled = true
         }
 
-        val backButtonName = messages["gui-back-button-name"] ?: "§c뒤로가기"
-        if (clickedItem.itemMeta?.displayName == backButtonName) {
+        if (clickedItem.itemMeta?.displayName == backButton.name) {
             if (isPluginGui) { // Only handle back button for plugin GUIs
                 val playerStack = playerGuiContext[player.uniqueId]
                 if (playerStack != null && playerStack.isNotEmpty()) {
@@ -314,9 +373,9 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             mainGuiTitle -> {
                 val clickedItemName = clickedItem.itemMeta?.displayName
                 when (clickedItemName) {
-                    messages["portfolio-button-name"] -> openPortfolioGui(player) { openMainGui(player) }
-                    messages["ranking-button-name"] -> openRankingGui(player) { openMainGui(player) }
-                    messages["subscribe-button-name"] -> openSubscribeGui(player) { openMainGui(player) }
+                    portfolioButton.name -> openPortfolioGui(player) { openMainGui(player) }
+                    rankingButton.name -> openRankingGui(player) { openMainGui(player) }
+                    subscribeButton.name -> openSubscribeGui(player) { openMainGui(player) }
                     else -> {
                         val stock = getStockFromItem(clickedItem) ?: return
                         when (event.click) {
@@ -331,10 +390,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
                 // No specific actions for items within these GUIs yet, but back button is handled.
             }
             subscribeGuiTitle -> {
-                val stock = getStockFromItem(clickedItem)
-                if (stock == null) {
-                    return
-                }
+                val stock = getStockFromItem(clickedItem) ?: return
                 val playerUuid = player.uniqueId.toString()
                 val isSubscribed = getSubscriptions(playerUuid).contains(stock.id)
                 if (isSubscribed) {
@@ -347,7 +403,9 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
                 openSubscribeGui(player) { openMainGui(player) } // Refresh GUI
             }
             else -> {
-                if (viewTitle.contains("구매") || viewTitle.contains("판매")) {
+                val buyTitlePrefix = buyGuiTitleFormat.substringBefore("%stock_name%")
+                val sellTitlePrefix = sellGuiTitleFormat.substringBefore("%stock_name%")
+                if (viewTitle.startsWith(buyTitlePrefix) || viewTitle.startsWith(sellTitlePrefix)) {
                     handleTrade(player, clickedItem, viewTitle)
                 }
             }
@@ -355,31 +413,36 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     }
 
     private fun handleTrade(player: Player, item: ItemStack, viewTitle: String) {
-        val stockName = viewTitle.substring(2).substringBefore(" ")
-        val stock = stocks.values.find { it.name == stockName } ?: return
-        val isBuy = viewTitle.contains("구매")
+        val buyTitlePrefix = buyGuiTitleFormat.substringBefore("%stock_name%")
+        val buyTitleSuffix = buyGuiTitleFormat.substringAfter("%stock_name%")
+        val sellTitlePrefix = sellGuiTitleFormat.substringBefore("%stock_name%")
+        val sellTitleSuffix = sellGuiTitleFormat.substringAfter("%stock_name%")
 
-        val amount: Int = when (item.itemMeta?.displayName) {
-            messages["buy-all-in-button-name"] -> {
-                val maxBuyable = (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt()
-                if (maxBuyable <= 0) {
-                    player.sendMessage(messages["not-enough-money"] ?: "§c돈이 부족합니다.")
-                    player.closeInventory()
-                    return
-                }
-                maxBuyable
-            }
-            messages["sell-all-button-name"] -> {
-                val playerStock = getPlayerStock(player.uniqueId.toString(), stock.id)
-                val currentAmount = playerStock?.amount ?: 0
-                if (currentAmount <= 0) {
-                    player.sendMessage(messages["not-enough-stock"] ?: "§c보유 주식이 부족합니다.")
-                    player.closeInventory()
-                    return
-                }
-                currentAmount
-            }
-            else -> item.itemMeta?.displayName?.filter { it.isDigit() }?.toIntOrNull() ?: return
+        val stockName: String? = when {
+            viewTitle.startsWith(buyTitlePrefix) && viewTitle.endsWith(buyTitleSuffix) -> viewTitle.removePrefix(buyTitlePrefix).removeSuffix(buyTitleSuffix)
+            viewTitle.startsWith(sellTitlePrefix) && viewTitle.endsWith(sellTitleSuffix) -> viewTitle.removePrefix(sellTitlePrefix).removeSuffix(sellTitleSuffix)
+            else -> null
+        }
+
+        if (stockName == null) return
+
+        val stock = stocks.values.find { it.name == stockName } ?: return
+        val isBuy = viewTitle.startsWith(buyTitlePrefix)
+
+        val clickedItemName = item.itemMeta?.displayName ?: return
+
+        val amount: Int = if (isBuy && clickedItemName == buyAllButton.name.replace("%amount%", (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt().toString())) {
+            (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt()
+        } else if (!isBuy && clickedItemName == sellAllButton.name.replace("%amount%", (getPlayerStock(player.uniqueId.toString(), stock.id)?.amount ?: 0).toString())) {
+            getPlayerStock(player.uniqueId.toString(), stock.id)?.amount ?: 0
+        } else {
+            tradeButtons.find { tb -> clickedItemName == tb.button.name.replace("%amount%", tb.amount.toString()) }?.amount ?: return
+        }
+
+        if (amount <= 0) {
+            player.sendMessage(if(isBuy) (messages["not-enough-money"] ?: "§c돈이 부족합니다.") else (messages["not-enough-stock"] ?: "§c보유 주식이 부족합니다."))
+            player.closeInventory()
+            return
         }
 
         val playerUuid = player.uniqueId.toString()
@@ -441,26 +504,31 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
 
     private fun openTradeGui(player: Player, stock: Stock, type: String, parentGui: () -> Unit) {
         playerGuiContext.getOrPut(player.uniqueId) { Stack() }.push(parentGui)
-        val title = if (type == "buy") messages["buy-gui-title"]?.replace("%stock_name%", stock.name) ?: "§a${stock.name} 구매" else messages["sell-gui-title"]?.replace("%stock_name%", stock.name) ?: "§c${stock.name} 판매"
+        val title = if (type == "buy") buyGuiTitleFormat.replace("%stock_name%", stock.name) else sellGuiTitleFormat.replace("%stock_name%", stock.name)
         val inv = Bukkit.createInventory(null, 27, title)
-        val amounts = listOf(1, 5, 10, 50, 100, 500)
-        val startSlot = (27 - amounts.size) / 2 // Center the buttons in the middle row, shifted one to the right
-        amounts.forEachIndexed { i, amount ->
-            inv.setItem(startSlot + i, createGuiItem(Material.GREEN_STAINED_GLASS_PANE, "§e${amount}주", listOf("§7클릭하여 ${amount}주 거래"), isButton = true))
+
+        val startSlot = (27 - tradeButtons.size) / 2
+        tradeButtons.forEachIndexed { i, tradeButton ->
+            if (i < 9) {
+                val buttonConf = tradeButton.button
+                val item = createGuiItem(buttonConf, mapOf("%amount%" to tradeButton.amount.toString()))
+                inv.setItem(startSlot + i, item)
+            }
         }
 
         if (type == "buy") {
             val maxBuyable = (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt()
-            inv.setItem(16, createGuiItem(Material.GOLD_INGOT, messages["buy-all-in-button-name"] ?: "§e올인", listOf(messages["buy-all-in-button-lore"]?.replace("%amount%", maxBuyable.toString()) ?: "§7최대 ${maxBuyable}주 구매"), isButton = true))
+            val item = createGuiItem(buyAllButton, mapOf("%amount%" to maxBuyable.toString()))
+            inv.setItem(16, item) // Consider making this slot configurable
         } else {
-            val playerStock = getPlayerStock(player.uniqueId.toString(), stock.id)
-            val currentAmount = playerStock?.amount ?: 0
-            inv.setItem(16, createGuiItem(Material.REDSTONE, messages["sell-all-button-name"] ?: "§c전부 팔기", listOf(messages["sell-all-button-lore"]?.replace("%amount%", currentAmount.toString()) ?: "§7보유 주식 ${currentAmount}주 전부 판매"), isButton = true))
+            val currentAmount = getPlayerStock(player.uniqueId.toString(), stock.id)?.amount ?: 0
+            val item = createGuiItem(sellAllButton, mapOf("%amount%" to currentAmount.toString()))
+            inv.setItem(16, item) // Consider making this slot configurable
         }
 
         val backButtonSlot = getBackButtonSlot(inv.size)
         if (backButtonSlot != -1) {
-            inv.setItem(backButtonSlot, createGuiItem(Material.BARRIER, "", emptyList(), isBackButton = true))
+            inv.setItem(backButtonSlot, createGuiItem(backButton))
         }
         player.openInventory(inv)
     }
@@ -479,21 +547,21 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
                 val profit = currentVal - pStock.totalSpent
                 val profitPercent = if (pStock.totalSpent > 0) (profit / pStock.totalSpent) * 100 else 0.0
                 val color = if (profit >= 0) "§a" else "§c"
-                createGuiItem(Material.BOOK, "§e${stock.name}", listOf(
+                createGuiItem(stock.material, "§e${stock.name}", listOf(
                     messages["portfolio-stock-quantity"]?.replace("%amount%", pStock.amount.toString()) ?: "§f보유 수량: §6${pStock.amount}주",
                     messages["portfolio-avg-price"]?.replace("%avg_price%", String.format("%,.2f", pStock.avgPrice)) ?: "§f매수 평균가: §6${String.format("%,.2f", pStock.avgPrice)}원",
                     messages["portfolio-current-price"]?.replace("%current_price%", String.format("%,.2f", stock.price)) ?: "§f현재가: §6${String.format("%,.2f", stock.price)}원",
                     messages["portfolio-current-value"]?.replace("%current_value%", String.format("%,.2f", currentVal))?.replace("%color%", color) ?: "§f평가 금액: ${color}${String.format("%,.2f", currentVal)}원",
                     messages["portfolio-profit-loss"]?.replace("%profit_loss%", String.format("%,.2f", profit))?.replace("%profit_loss_percent%", String.format("%.2f", profitPercent))?.replace("%color%", color) ?: "§f평가 손익: ${color}${String.format("%,.2f", profit)}원 (${String.format("%.2f", profitPercent)}%)"
-                ))
+                ), stock.customModelData)
             }.filterNotNull()
 
             Bukkit.getScheduler().runTask(this, Runnable {
                 items.forEachIndexed { i, item -> if (i < 45) inv.setItem(i, item) }
-                inv.setItem(49, createGuiItem(Material.GOLD_INGOT, messages["portfolio-total-asset"]?.replace("%total_asset%", String.format("%,.2f", totalAsset)) ?: "§e총 자산 평가액", listOf(messages["portfolio-total-asset"]?.replace("%total_asset%", String.format("%,.2f", totalAsset)) ?: "§6${String.format("%,.2f", totalAsset)}원"), isButton = true))
+                inv.setItem(49, createGuiItem(portfolioTotalAssetButton, mapOf("%total_asset%" to String.format("%,.2f", totalAsset))))
                 val backButtonSlot = getBackButtonSlot(inv.size)
                 if (backButtonSlot != -1) {
-                    inv.setItem(backButtonSlot, createGuiItem(Material.BARRIER, "", emptyList(), isBackButton = true))
+                    inv.setItem(backButtonSlot, createGuiItem(backButton))
                 }
                 player.openInventory(inv)
             })
@@ -520,7 +588,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
                 items.forEachIndexed { i, item -> inv.setItem(i, item) }
                 val backButtonSlot = getBackButtonSlot(inv.size)
                 if (backButtonSlot != -1) {
-                    inv.setItem(backButtonSlot, createGuiItem(Material.BARRIER, "", emptyList(), isBackButton = true))
+                    inv.setItem(backButtonSlot, createGuiItem(backButton))
                 }
                 player.openInventory(inv)
             })
@@ -535,20 +603,15 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         stocks.values.forEachIndexed { i, stock ->
             if (i < 45) {
                 val isSubscribed = playerSubscriptions.contains(stock.id)
-                val material = if (isSubscribed) Material.LIME_WOOL else Material.RED_WOOL
-                val status = if (isSubscribed) messages["subscribe-status-subscribed"] ?: "§a구독 중" else messages["subscribe-status-not-subscribed"] ?: "§c구독 안 함"
-                val lore = listOf(
-                    messages["subscribe-item-lore-status"]?.replace("%status%", status) ?: "§7상태: %status%",
-                    "",
-                    if (isSubscribed) messages["subscribe-item-lore-click-unsubscribe"] ?: "§c클릭하여 구독 해지" else messages["subscribe-item-lore-click-subscribe"] ?: "§a클릭하여 구독"
-                )
-                inv.setItem(i, createGuiItem(material, "§e${stock.name} §7(${stock.id})", lore))
+                val buttonConf = if (isSubscribed) subscribeToggleOnButton else subscribeToggleOffButton
+                val item = createGuiItem(buttonConf, mapOf("%stock_name%" to stock.name, "stock_id" to stock.id)) // Pass stock_id for getStockFromItem
+                inv.setItem(i, item)
             }
         }
 
         val backButtonSlot = getBackButtonSlot(inv.size)
         if (backButtonSlot != -1) {
-            inv.setItem(backButtonSlot, createGuiItem(Material.BARRIER, "", emptyList(), isBackButton = true))
+            inv.setItem(backButtonSlot, createGuiItem(backButton))
         }
         player.openInventory(inv)
     }
@@ -556,35 +619,51 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     // --- Helper and Data Access Functions ---
 
     private fun createStockItem(stock: Stock): ItemStack {
-        val item = ItemStack(Material.PAPER)
-        val meta = item.itemMeta
+        val item = ItemStack(stock.material)
+        val meta = item.itemMeta!!
         val trend = stockTrends[stock.id] ?: Trend.STABLE
         meta.setDisplayName("§e${stock.name} §7(${stock.id})")
-        meta.lore = listOf(
-            "§f현재가: §6${String.format("%,.2f", stock.price)}원",
-            "§f추세: ${trend.display}",
+        if (stock.customModelData != 0) {
+            meta.setCustomModelData(stock.customModelData)
+        }
+        // Lore from lang.yml or default
+        val lore = messages["stock-item-lore"]?.split("\n") ?: listOf(
+            "§f현재가: §6%price%원",
+            "§f추세: %trend%",
             "",
             "§a좌클릭: 구매하기",
             "§c우클릭: 판매하기"
         )
+        meta.lore = lore.map {
+            it.replace("%price%", String.format("%,.2f", stock.price))
+              .replace("%trend%", trend.display)
+        }
         item.itemMeta = meta
         return item
     }
 
-    private fun createGuiItem(mat: Material, name: String, lore: List<String>, isButton: Boolean = false, isBackButton: Boolean = false): ItemStack {
-        val finalMaterial = if (itemsAllStructureVoid && (isButton || isBackButton)) Material.STRUCTURE_VOID else mat
-        val item = ItemStack(finalMaterial)
-        val meta = item.itemMeta
+    private fun createGuiItem(buttonConfig: ButtonConfig, placeholders: Map<String, String> = emptyMap()): ItemStack {
+        return createGuiItem(buttonConfig.material, buttonConfig.name, buttonConfig.lore, buttonConfig.customModelData, true, placeholders)
+    }
 
-        if (isBackButton) {
-            meta.setDisplayName(messages["gui-back-button-name"] ?: "§c뒤로가기")
-            meta.lore = listOf(messages["gui-back-button-lore"] ?: "§7이전 화면으로 돌아갑니다.")
-            item.itemMeta = meta
-            return item
+    private fun createGuiItem(mat: Material, name: String, lore: List<String>, customModelData: Int = 0, isButton: Boolean = false, placeholders: Map<String, String> = emptyMap()): ItemStack {
+        val finalMaterial = if (itemsAllStructureVoid && isButton) Material.STRUCTURE_VOID else mat
+        val item = ItemStack(finalMaterial)
+        val meta = item.itemMeta!!
+
+        var finalName = name
+        var finalLore = lore
+
+        placeholders.forEach { (key, value) ->
+            finalName = finalName.replace(key, value)
+            finalLore = finalLore.map { it.replace(key, value) }
         }
 
-        meta.setDisplayName(name)
-        meta.lore = lore
+        meta.setDisplayName(finalName)
+        meta.lore = finalLore
+        if (customModelData != 0) {
+            meta.setCustomModelData(customModelData)
+        }
 
         item.itemMeta = meta
         return item
@@ -601,9 +680,18 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     }
 
     private fun getStockFromItem(item: ItemStack): Stock? {
-        if ((item.type != Material.PAPER && item.type != Material.LIME_WOOL && item.type != Material.RED_WOOL) || !item.hasItemMeta()) return null
-        val stockId = item.itemMeta.displayName.substringAfter('(')?.substringBefore(')') ?: return null
-        return stocks[stockId]
+        if (!item.hasItemMeta()) return null
+        val name = item.itemMeta.displayName
+        // Main GUI: "§e주식 이름 §7(ID)"
+        // Subscribe GUI: "§e주식 이름 §7(구독 중)" or "§e주식 이름 §7(미구독)"
+        val stockIdMatch = "\\((.*?)\\)".toRegex().find(name)
+        val stockId = stockIdMatch?.groups?.get(1)?.value
+        if (stockId != null && stocks.containsKey(stockId)) {
+            return stocks[stockId]
+        }
+        // Fallback for subscribe GUI items that might not have the ID in the name
+        val stockName = name.substringBefore(" §7(")
+        return stocks.values.find { it.name == stockName }
     }
 
     private fun updatePlayerStock(uuid: String, stockId: String, amountDelta: Int, spentDelta: Double) {
@@ -815,7 +903,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
 
     // --- Data Classes ---
 
-    data class Stock(val id: String, val name: String, var price: Double, val fluctuation: Double)
+        data class Stock(val id: String, val name: String, var price: Double, val fluctuation: Double, val material: Material, val customModelData: Int)
     data class PlayerStock(val uuid: String, val stockId: String, val amount: Int, val totalSpent: Double) {
         val avgPrice: Double get() = if (amount > 0) totalSpent / amount else 0.0
     }
@@ -834,6 +922,11 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         val customModelData: Int,
         val name: String,
         val lore: List<String>
+    )
+
+    data class TradeButtonConfig(
+        val amount: Int,
+        val button: ButtonConfig
     )
 
     enum class Trend(val multiplier: Double, val display: String) {

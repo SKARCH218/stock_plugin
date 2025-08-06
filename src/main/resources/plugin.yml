@@ -8,6 +8,7 @@ commands:
   주식:
     description: 주식 관련 명령어를 엽니다.
     aliases: [stock, stocks]
+    permission: op
 permissions:
   stock.admin:
     description: 주식 플러그인 관리 권한입니다.
