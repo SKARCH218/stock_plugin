@@ -2,6 +2,7 @@ package lightstudio.stock_plugin
 
 import net.milkbowl.vault.economy.Economy
 import org.bukkit.Bukkit
+import org.bukkit.ChatColor
 import org.bukkit.Material
 import org.bukkit.OfflinePlayer
 import org.bukkit.command.Command
@@ -335,49 +336,19 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
     @EventHandler
     fun onInventoryClick(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
-        val viewTitle = event.view.title
-        val clickedItem = event.currentItem ?: return
+        val view = event.view
+        val currentItem = event.currentItem ?: return
+        val clickedItemName = currentItem.itemMeta?.displayName ?: ""
 
-        val buyTitlePrefix = buyGuiTitleFormat.substringBefore("%stock_name%")
-        val sellTitlePrefix = sellGuiTitleFormat.substringBefore("%stock_name%")
-
-        val isPluginGui = when {
-            viewTitle == mainGuiTitle -> true
-            viewTitle == portfolioGuiTitle -> true
-            viewTitle == rankingGuiTitle -> true
-            viewTitle == subscribeGuiTitle -> true
-            viewTitle.startsWith(buyTitlePrefix) -> true
-            viewTitle.startsWith(sellTitlePrefix) -> true
-            else -> false
-        }
-
-        if (isPluginGui) {
-            event.isCancelled = true
-        }
-
-        if (clickedItem.itemMeta?.displayName == backButton.name) {
-            if (isPluginGui) { // Only handle back button for plugin GUIs
-                val playerStack = playerGuiContext[player.uniqueId]
-                if (playerStack != null && playerStack.isNotEmpty()) {
-                    playerStack.pop().invoke() // Go back to the previous GUI
-                } else {
-                    player.closeInventory() // Close if no previous GUI
-                }
-            }
-            return
-        }
-
-        if (!isPluginGui) return // Only process plugin GUI clicks further
-
-        when (viewTitle) {
+        when (view.title) {
             mainGuiTitle -> {
-                val clickedItemName = clickedItem.itemMeta?.displayName
+                event.isCancelled = true
                 when (clickedItemName) {
                     portfolioButton.name -> openPortfolioGui(player) { openMainGui(player) }
-                    rankingButton.name -> openRankingGui(player) { openMainGui(player) }
                     subscribeButton.name -> openSubscribeGui(player) { openMainGui(player) }
+                    rankingButton.name -> openRankingGui(player) { openMainGui(player) }
                     else -> {
-                        val stock = getStockFromItem(clickedItem) ?: return
+                        val stock = getStockFromItem(currentItem) ?: return
                         when (event.click) {
                             ClickType.LEFT -> openTradeGui(player, stock, "buy") { openMainGui(player) }
                             ClickType.RIGHT -> openTradeGui(player, stock, "sell") { openMainGui(player) }
@@ -387,26 +358,37 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
                 }
             }
             portfolioGuiTitle, rankingGuiTitle -> {
-                // No specific actions for items within these GUIs yet, but back button is handled.
+                event.isCancelled = true
+                if (clickedItemName == backButton.name) {
+                    playerGuiContext[player.uniqueId]?.pop()?.invoke()
+                }
             }
             subscribeGuiTitle -> {
-                val stock = getStockFromItem(clickedItem) ?: return
-                val playerUuid = player.uniqueId.toString()
-                val isSubscribed = getSubscriptions(playerUuid).contains(stock.id)
-                if (isSubscribed) {
-                    removeSubscription(playerUuid, stock.id)
-                    player.sendMessage(messages["subscribe-removed"]?.replace("%stock_name%", stock.name) ?: "§a${stock.name} 주식 구독을 해지했습니다.")
+                event.isCancelled = true
+                if (clickedItemName == backButton.name) {
+                    playerGuiContext[player.uniqueId]?.pop()?.invoke()
                 } else {
-                    addSubscription(playerUuid, stock.id)
-                    player.sendMessage(messages["subscribe-added"]?.replace("%stock_name%", stock.name) ?: "§a${stock.name} 주식을 구독했습니다.")
+                    val stock = getStockFromItem(currentItem) ?: return
+                    val isSubscribed = getSubscriptions(player.uniqueId.toString()).contains(stock.id)
+                    if (isSubscribed) {
+                        removeSubscription(player.uniqueId.toString(), stock.id)
+                        player.sendMessage(messages["subscription-cancelled"]?.replace("%stock_name%", stock.name) ?: "§a${stock.name}§7 구독을 취소했습니다.")
+                    } else {
+                        addSubscription(player.uniqueId.toString(), stock.id)
+                        player.sendMessage(messages["subscription-added"]?.replace("%stock_name%", stock.name) ?: "§a${stock.name}§7을(를) 구독했습니다.")
+                    }
+                    openSubscribeGui(player) { openMainGui(player) } // Refresh
                 }
-                openSubscribeGui(player) { openMainGui(player) } // Refresh GUI
             }
             else -> {
-                val buyTitlePrefix = buyGuiTitleFormat.substringBefore("%stock_name%")
-                val sellTitlePrefix = sellGuiTitleFormat.substringBefore("%stock_name%")
-                if (viewTitle.startsWith(buyTitlePrefix) || viewTitle.startsWith(sellTitlePrefix)) {
-                    handleTrade(player, clickedItem, viewTitle)
+                if (view.title.startsWith(buyGuiTitleFormat.substringBefore("%stock_name%")) ||
+                    view.title.startsWith(sellGuiTitleFormat.substringBefore("%stock_name%"))) {
+                    event.isCancelled = true
+                    if (clickedItemName == backButton.name) {
+                        playerGuiContext[player.uniqueId]?.pop()?.invoke()
+                    } else {
+                        handleTrade(player, currentItem, view.title)
+                    }
                 }
             }
         }
@@ -429,43 +411,43 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
         val stock = stocks.values.find { it.name == stockName } ?: return
         val isBuy = viewTitle.startsWith(buyTitlePrefix)
 
+        // Perform limit check right away
+        if (enableTransactionLimits) {
+            val dailyTransaction = getPlayerDailyTransaction(player.uniqueId.toString(), "GLOBAL_TRADE")
+            val today = java.time.LocalDate.now().toString()
+            val currentBuyCount = if (dailyTransaction?.lastUpdatedDate == today) dailyTransaction.buyCount else 0
+            val currentSellCount = if (dailyTransaction?.lastUpdatedDate == today) dailyTransaction.sellCount else 0
+
+            if (isBuy) {
+                if (dailyBuyLimit > 0 && currentBuyCount >= dailyBuyLimit) {
+                    player.sendMessage(messages["transaction-limit-exceeded-buy"]?.replace("%limit%", dailyBuyLimit.toString()) ?: "§c오늘 구매 한도를 초과했습니다. (일일 한도: ${dailyBuyLimit}회)")
+                    player.closeInventory()
+                    return
+                }
+            } else { // isSell
+                if (dailySellLimit > 0 && currentSellCount >= dailySellLimit) {
+                    player.sendMessage(messages["transaction-limit-exceeded-sell"]?.replace("%limit%", dailySellLimit.toString()) ?: "§c오늘 판매 한도를 초과했습니다. (일일 한도: ${dailySellLimit}회)")
+                    player.closeInventory()
+                    return
+                }
+            }
+        }
+
         val clickedItemName = item.itemMeta?.displayName ?: return
 
-        val amount: Int = if (isBuy && clickedItemName == buyAllButton.name.replace("%amount%", (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt().toString())) {
+        // More robust amount calculation for sell-all
+        val amount: Int = if (isBuy && clickedItemName.startsWith(buyAllButton.name.substringBefore("%amount%"))) {
             (econ!!.getBalance(player) / (stock.price * (1 + transactionFeePercent / 100.0))).toInt()
-        } else if (!isBuy && clickedItemName == sellAllButton.name.replace("%amount%", (getPlayerStock(player.uniqueId.toString(), stock.id)?.amount ?: 0).toString())) {
+        } else if (!isBuy && clickedItemName.startsWith(sellAllButton.name.substringBefore("%amount%"))) {
             getPlayerStock(player.uniqueId.toString(), stock.id)?.amount ?: 0
         } else {
             tradeButtons.find { tb -> clickedItemName == tb.button.name.replace("%amount%", tb.amount.toString()) }?.amount ?: return
         }
 
         if (amount <= 0) {
-            player.sendMessage(if(isBuy) (messages["not-enough-money"] ?: "§c돈이 부족합니다.") else (messages["not-enough-stock"] ?: "§c보유 주식이 부족합니다."))
+            player.sendMessage(if(isBuy) (messages["not-enough-money"] ?: "§c구매할 돈이 부족하거나, 구매할 수 있는 주식이 없습니다.") else (messages["not-enough-stock-to-sell"] ?: "§c판매할 주식이 없습니다."))
             player.closeInventory()
             return
-        }
-
-        val playerUuid = player.uniqueId.toString()
-        val dailyTransaction = getPlayerDailyTransaction(playerUuid, "GLOBAL_TRADE")
-        val today = java.time.LocalDate.now().toString()
-
-        var currentBuyCount = if (dailyTransaction?.lastUpdatedDate == today) dailyTransaction.buyCount else 0
-        var currentSellCount = if (dailyTransaction?.lastUpdatedDate == today) dailyTransaction.sellCount else 0
-
-        if (enableTransactionLimits) {
-            if (isBuy) {
-                if (dailyBuyLimit > 0 && currentBuyCount >= dailyBuyLimit) {
-                    player.sendMessage(messages["transaction-limit-exceeded-buy"]?.replace("%limit%", dailyBuyLimit.toString()) ?: "§c오늘 이 주식의 구매 한도를 초과했습니다. (일일 한도: ${dailyBuyLimit}회)")
-                    player.closeInventory()
-                    return
-                }
-            } else {
-                if (dailySellLimit > 0 && currentSellCount >= dailySellLimit) {
-                    player.sendMessage(messages["transaction-limit-exceeded-sell"]?.replace("%limit%", dailySellLimit.toString()) ?: "§c오늘 이 주식의 판매 한도를 초과했습니다. (일일 한도: ${dailySellLimit}회)")
-                    player.closeInventory()
-                    return
-                }
-            }
         }
 
         val fee = transactionFeePercent / 100.0
@@ -480,13 +462,25 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             econ!!.withdrawPlayer(player, cost)
             updatePlayerStock(player.uniqueId.toString(), stock.id, amount, totalPrice)
             updatePlayerDailyTransaction(player.uniqueId.toString(), stock.id, true)
-            val remainingBuys = if (dailyBuyLimit > 0) dailyBuyLimit - (currentBuyCount + 1) else -1 // -1 for unlimited
-            val finalBuyMessage = messages["buy-success"]?.replace("%stock_name%", stock.name)?.replace("%amount%", amount.toString())?.replace("%remaining_transactions%", remainingBuys.toString()) ?: "§a${stock.name} ${amount}주를 매수했습니다. (남은 구매 횟수: ${if (remainingBuys == -1) "무제한" else remainingBuys}회)"
+
+            val dailyTransaction = getPlayerDailyTransaction(player.uniqueId.toString(), "GLOBAL_TRADE")
+            val currentBuyCount = if (dailyTransaction?.lastUpdatedDate == java.time.LocalDate.now().toString()) dailyTransaction.buyCount else 0
+
+            val remainingBuysStr = if (dailyBuyLimit > 0) {
+                (dailyBuyLimit - currentBuyCount).coerceAtLeast(0).toString()
+            } else {
+                messages["unlimited"] ?: "무제한"
+            }
+            val finalBuyMessage = messages["buy-success"]
+                ?.replace("%stock_name%", stock.name)
+                ?.replace("%amount%", amount.toString())
+                ?.replace("%remaining_transactions%", remainingBuysStr)
+                ?: "§a${stock.name} ${amount}주를 매수했습니다. (남은 구매 횟수: $remainingBuysStr)"
             player.sendMessage(finalBuyMessage)
-        } else {
+        } else { // Sell
             val currentAmount = getPlayerStock(player.uniqueId.toString(), stock.id)?.amount ?: 0
             if (currentAmount < amount) {
-                player.sendMessage(messages["not-enough-stock"] ?: "§c보유 주식이 부족합니다.")
+                player.sendMessage(messages["not-enough-stock"]?.replace("%owned%", currentAmount.toString())?.replace("%requested%", amount.toString()) ?: "§c보유 주식이 부족합니다. (보유: ${currentAmount}주, 요청: ${amount}주)")
                 return
             }
             val revenue = totalPrice * (1 - fee)
@@ -495,8 +489,20 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             val spentToRemove = avgPrice * amount
             updatePlayerStock(player.uniqueId.toString(), stock.id, -amount, -spentToRemove)
             updatePlayerDailyTransaction(player.uniqueId.toString(), stock.id, false)
-            val remainingSells = if (dailySellLimit > 0) dailySellLimit - (currentSellCount + 1) else -1 // -1 for unlimited
-            val finalSellMessage = messages["sell-success"]?.replace("%stock_name%", stock.name)?.replace("%amount%", amount.toString())?.replace("%remaining_transactions%", remainingSells.toString()) ?: "§a${stock.name} ${amount}주를 매도했습니다. (남은 판매 횟수: ${if (remainingSells == -1) "무제한" else remainingSells}회)"
+
+            val dailyTransaction = getPlayerDailyTransaction(player.uniqueId.toString(), "GLOBAL_TRADE")
+            val currentSellCount = if (dailyTransaction?.lastUpdatedDate == java.time.LocalDate.now().toString()) dailyTransaction.sellCount else 0
+
+            val remainingSellsStr = if (dailySellLimit > 0) {
+                (dailySellLimit - currentSellCount).coerceAtLeast(0).toString()
+            } else {
+                messages["unlimited"] ?: "무제한"
+            }
+            val finalSellMessage = messages["sell-success"]
+                ?.replace("%stock_name%", stock.name)
+                ?.replace("%amount%", amount.toString())
+                ?.replace("%remaining_transactions%", remainingSellsStr)
+                ?: "§a${stock.name} ${amount}주를 매도했습니다. (남은 판매 횟수: $remainingSellsStr)"
             player.sendMessage(finalSellMessage)
         }
         player.closeInventory()
@@ -690,7 +696,7 @@ class Stock_plugin : JavaPlugin(), CommandExecutor, Listener, TabCompleter {
             return stocks[stockId]
         }
         // Fallback for subscribe GUI items that might not have the ID in the name
-        val stockName = name.substringBefore(" §7(")
+        val stockName = ChatColor.stripColor(name.substringBefore(" §7("))
         return stocks.values.find { it.name == stockName }
     }
 
